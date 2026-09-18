@@ -1,0 +1,4 @@
+{
+  "model_id": "device-health-v1",
+  "features": {"temperature": 0.2, "vibration": 0.3, "current": 0.4, "runtime": 0.5}
+}

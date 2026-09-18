@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>设备健康评分</title>
+<style>
+body{font:16px/1.6 system-ui,sans-serif;background:#f3f6fa;color:#172538;margin:0;padding:3rem 1rem}main{max-width:680px;margin:auto;background:white;border:1px solid #d7e1ec;border-radius:16px;padding:2rem}h1{margin:0}label{display:block;margin:1rem 0}input{width:100%;box-sizing:border-box;padding:.6rem;border:1px solid #bac9d9;border-radius:6px}button{background:#175b78;color:white;border:0;border-radius:6px;padding:.75rem 1.2rem;cursor:pointer}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#edf3f8;padding:1rem;border-radius:8px}.note{color:#526176}a{color:#175b78}
+</style>
+<main>
+<h1>设备健康评分</h1>
+<p class="note">固定演示模型 · 普通推理 · 四个输入均为 0–1 之间的归一化特征</p>
+<p>分数越高表示合成设备状态中的负荷越高。此模型用于软件演示，不用于真实设备诊断。</p>
+<form id="score-form">
+<label>温度负荷<input name="temperature" type="number" step="any" min="0" max="1" value="0.2" required></label>
+<label>振动强度<input name="vibration" type="number" step="any" min="0" max="1" value="0.3" required></label>
+<label>电流负荷<input name="current" type="number" step="any" min="0" max="1" value="0.4" required></label>
+<label>运行时长<input name="runtime" type="number" step="any" min="0" max="1" value="0.5" required></label>
+<button type="submit">计算评分</button>
+</form>
+<pre id="result" aria-live="polite">等待输入</pre>
+<p><a href="/docs">API 文档</a> · <a href="/models">模型信息</a></p>
+</main>
+<script>
+document.querySelector('#score-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const output = document.querySelector('#result');
+  const features = Object.fromEntries([...new FormData(event.target)].map(([key,value]) => [key, Number(value)]));
+  output.textContent = '正在计算…';
+  try {
+    const response = await fetch('/score', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({model_id:'device-health-v1',features})});
+    const result = await response.json();
+    output.textContent = JSON.stringify({http_status:response.status,...result},null,2);
+  } catch (error) { output.textContent = '请求失败：' + error.message; }
+});
+</script>
+</html>

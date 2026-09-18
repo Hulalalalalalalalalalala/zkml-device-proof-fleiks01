@@ -1,0 +1,31 @@
+{
+  "id": "device-health-v1",
+  "version": "1.0.0",
+  "description": "Synthetic normalized device load score; not a diagnostic model.",
+  "feature_order": [
+    "temperature",
+    "vibration",
+    "current",
+    "runtime"
+  ],
+  "feature_range": [
+    0.0,
+    1.0
+  ],
+  "score_range": [
+    0.1,
+    1.0
+  ],
+  "score_direction": "higher-means-more-load",
+  "input_shape": [
+    1,
+    4
+  ],
+  "output_shape": [
+    1,
+    1
+  ],
+  "onnx_opset": 13,
+  "onnx_ir_version": 8,
+  "sha256": "4bf74b33ef32fe70aa57dcf5bd096b560d81af0c7eb0cb4378922f89ac66db8e"
+}
