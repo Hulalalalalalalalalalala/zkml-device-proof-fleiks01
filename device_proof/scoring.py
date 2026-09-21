@@ -1,19 +1,29 @@
-"""ONNX inference for the bundled demonstration model."""
+"""ONNX ordinary inference for the fixed demonstration model.
 
-from functools import lru_cache
-from hashlib import sha256
-import json
+All access to the model artifacts is gated by the integrity audit in
+:mod:`device_proof.integrity`, so scoring can only run against an artifact that
+matches the published release contract. Nothing here generates or verifies
+zero-knowledge proofs: the engine is ordinary CPU inference.
+"""
+
 from pathlib import Path
 
 import numpy as np
-import onnxruntime as ort
 from pydantic import BaseModel, ConfigDict, Field
+
+from .integrity import (
+    FEATURE_ORDER,
+    INPUT_NAME,
+    MODEL_ID,
+    OUTPUT_NAME,
+    ModelGuard,
+)
 
 
 ROOT = Path(__file__).resolve().parent.parent
-MODEL_PATH = ROOT / "models" / "device-health-v1.onnx"
-MANIFEST_PATH = ROOT / "models" / "device-health-v1.json"
-MODEL_ID = "device-health-v1"
+
+# A single process-wide guard gates the bundled model.
+guard = ModelGuard(ROOT)
 
 
 class Features(BaseModel):
@@ -40,36 +50,27 @@ class ScoreResponse(BaseModel):
 
 
 def model_info() -> dict:
-    info = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
-    digest = sha256(MODEL_PATH.read_bytes()).hexdigest()
-    if info["sha256"] != digest:
-        raise RuntimeError("Bundled model digest does not match its manifest")
-    return info
+    """Return the audited manifest. Fails closed if the artifact is invalid."""
+    entry = guard.access()
+    return dict(entry.manifest)
 
 
-@lru_cache(maxsize=1)
-def session() -> ort.InferenceSession:
-    model_info()
-    options = ort.SessionOptions()
-    options.intra_op_num_threads = 1
-    options.inter_op_num_threads = 1
-    return ort.InferenceSession(
-        str(MODEL_PATH), sess_options=options, providers=["CPUExecutionProvider"]
-    )
+def session():
+    """Return a live inference session for an audited artifact."""
+    return guard.access().session
 
 
 def score(request: ScoreRequest) -> ScoreResponse:
     if request.model_id != MODEL_ID:
         raise KeyError(request.model_id)
-    info = model_info()
-    feature_order = info["feature_order"]
+    entry = guard.access()
     values = np.array(
-        [[getattr(request.features, feature) for feature in feature_order]],
+        [[getattr(request.features, feature) for feature in FEATURE_ORDER]],
         dtype=np.float32,
     )
-    output = session().run(["score"], {"features": values})[0]
+    output = entry.session.run([OUTPUT_NAME], {INPUT_NAME: values})[0]
     return ScoreResponse(
         model_id=MODEL_ID,
-        model_sha256=info["sha256"],
+        model_sha256=entry.model_digest,
         score=float(output[0, 0]),
     )
