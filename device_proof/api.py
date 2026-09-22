@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse
 
 from .audit import AuditError, audit_model
 from .scoring import MODEL_ID, ROOT, ScoreRequest, ScoreResponse, model_info, score, session
+from .statements import QuantizationError, StatementResponse, build_statement
 
 
 app = FastAPI(title="Device health scores", version="0.1.0")
@@ -60,5 +61,17 @@ def create_score(request: ScoreRequest):
         return score(request)
     except KeyError:
         raise HTTPException(status_code=404, detail="Unknown model") from None
+    except AuditError:
+        raise _unavailable() from None
+
+
+@app.post("/statements", response_model=StatementResponse)
+def create_statement(request: ScoreRequest):
+    try:
+        return build_statement(request)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Unknown model") from None
+    except QuantizationError as exc:
+        raise HTTPException(status_code=422, detail=exc.code) from None
     except AuditError:
         raise _unavailable() from None
