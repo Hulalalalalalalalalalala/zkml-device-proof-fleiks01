@@ -174,8 +174,14 @@ def statement_digest_from_manifest(manifest: dict) -> str:
     return digest_json(body)
 
 
-def validate_manifest_shape(manifest) -> dict:
-    """Type-check the manifest enough to safely read its binding fields."""
+def validate_manifest_shape(manifest, *, pin_model: bool = True) -> dict:
+    """Type-check the manifest enough to safely read its binding fields.
+
+    With ``pin_model`` (the default) the model/quantization identity fields
+    are also pinned to the one audited release scheme; bundle verification
+    passes ``pin_model=False`` so a model/quantization conflict can surface
+    as its own distinct error instead of a material error.
+    """
     if not isinstance(manifest, dict):
         raise MaterialError
     required_str = {
@@ -214,31 +220,33 @@ def validate_manifest_shape(manifest) -> dict:
         raise MaterialError
     if manifest["ezkl_version"] != EZKL_VERSION:
         raise MaterialError
-    # The semantic interpretation of the public output is pinned to the one
-    # quantization scheme the circuit was built for; a claimant cannot relabel
-    # a genuine proof as belonging to a different scheme (even though it could
-    # recompute the self-consistent statement digest).
-    if manifest["model_id"] != "device-health-v1":
-        raise MaterialError
-    if manifest["quantization_id"] != QUANTIZATION_ID:
-        raise MaterialError
-    if manifest["scale"] != SCALE or manifest["rounding"] != ROUNDING:
-        raise MaterialError
+    if pin_model:
+        # The semantic interpretation of the public output is pinned to the
+        # one quantization scheme the circuit was built for; a claimant cannot
+        # relabel a genuine proof as belonging to a different scheme (even
+        # though it could recompute the self-consistent statement digest).
+        if manifest["model_id"] != "device-health-v1":
+            raise MaterialError
+        if manifest["quantization_id"] != QUANTIZATION_ID:
+            raise MaterialError
+        if manifest["scale"] != SCALE or manifest["rounding"] != ROUNDING:
+            raise MaterialError
     if not _is_hex64(manifest["model_sha256"]):
         raise MaterialError
     return manifest
 
 
 def bind_materials(*, manifest: dict, proof_bytes: bytes, settings_bytes: bytes,
-                   vk_bytes: bytes) -> dict:
+                   vk_bytes: bytes, pin_model: bool = True) -> dict:
     """Validate structure and all digest bindings of supplied materials.
 
     Returns ``{"instances": ..., "output_felt": ..., "settings_normalized": ...}``
     on success; raises MaterialError("invalid_proof_material") otherwise.
     Cryptographic EZKL verification and the trusted model mapping happen in
-    the caller (they need the backend).
+    the caller (they need the backend). ``pin_model`` is forwarded to
+    validate_manifest_shape.
     """
-    validate_manifest_shape(manifest)
+    validate_manifest_shape(manifest, pin_model=pin_model)
     parse_settings(settings_bytes)  # structural only
     proof_doc = parse_proof(proof_bytes)
     instances = proof_doc["instances"]
