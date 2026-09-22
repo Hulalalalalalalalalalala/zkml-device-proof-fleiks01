@@ -82,3 +82,18 @@ manifest 用 SHA-256 把声明与全部材料绑定：含 `model_id`、`model_sh
 `POST /proof-verifications` 接收 `{manifest, proof, verification_key, settings}`（均为字符串：manifest 为 JSON 文本，其余为 Base64）。服务依次：校验结构与类型 → 复核 proof/settings/vk/instances 各摘要与 manifest 一致 → 复核输出 felt 与 `q_score` 一致（≤1）且内嵌声明摘要正确 → 校验量化方案被钉死为 `device-health-v1-q16-v1`（防止把真实证明重标记为别的方案）→ 校验模型映射（`model_id`/`model_sha256` 与受信发布模型一致，vk/settings 与受信电路一致）→ 最后调用真实 `ezkl.verify`。成功返回 `{verified: true, model_id, model_sha256, quantization_id, q_score, statement_sha256, instances, ezkl_version}`；任何结构、摘要、模型映射或密码学校验失败返回 422 `invalid_proof_material`；后端缺失返回 503 `proof_backend_unavailable`。
 
 首次构建电路会生成并缓存确定性公共 KZG SRS、编译电路与密钥（缓存于运行目录并以一份真实自检测试证明校验，之后跨进程秒级复用）；所有既有接口行为保持不变。
+
+## 版本化证据包
+
+CLI `export-bundle` 把某个 **succeeded** 证明任务的全部公开材料打包为单个 zip 证据包：
+
+```bash
+.venv/bin/python -m device_proof export-bundle --job-id <id> --output <zip> [--runtime-dir runtime]
+.venv/bin/python -m device_proof verify-bundle --bundle <zip> [--backend-dir runtime/backend]
+```
+
+zip 根目录**仅含**六个固定成员：`bundle.json`、`manifest.json`、`proof.json`、`verification_key.key`、`settings.json`、`instances.json`。`bundle.json` 含 `bundle_version=1` 及其余五个文件的 SHA-256；包内不含原始特征、逐项编码、witness 或任何内部路径，成员为固定相对名、固定时间戳的普通文件。
+
+`verify-bundle` 完全独立校验：**不启动 HTTP、不读取 runtime 任务库**。它先限制成员数与总展开大小，拒绝绝对路径、`..`、重复名、目录、链接、加密成员与压缩炸弹；再依次检查 `bundle_version` 与成员集合、`bundle.json` 摘要、manifest 与各材料及 `instances.json` 的摘要绑定、受信模型与量化映射（`model_id`/`model_sha256`/vk/settings 与受信发布一致、量化钉死为 `device-health-v1-q16-v1`），最后调用真实 `ezkl.verify`。成功输出与 `POST /proof-verifications` 相同的单行 JSON（`verified: true` 等）并以 0 退出。
+
+失败时退出码非零且 stderr 仅含稳定错误码：未知任务 `proof_job_not_found`、任务未成功 `proof_bundle_not_ready`、未知包版本 `unsupported_bundle_version`、模型或量化冲突 `untrusted_model`、包结构或安全问题 `invalid_bundle`、材料或验真失败 `invalid_proof_material`、后端缺失 `proof_backend_unavailable`。既有接口与 CLI 行为保持兼容。

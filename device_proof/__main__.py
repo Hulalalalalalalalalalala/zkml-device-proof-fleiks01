@@ -6,6 +6,8 @@ import sys
 from pydantic import ValidationError
 
 from .audit import MODEL_ID, AuditError, audit_model
+from .backend import ProofBackendError
+from .bundle import BundleError, export_bundle, verify_bundle
 from .scoring import ROOT, ScoreRequest, score
 from .statements import QuantizationError, build_statement
 
@@ -17,6 +19,12 @@ def main(argv=None):
         return
     if args and args[0] == "statement":
         _statement(args[1:])
+        return
+    if args and args[0] == "export-bundle":
+        _export_bundle(args[1:])
+        return
+    if args and args[0] == "verify-bundle":
+        _verify_bundle(args[1:])
         return
     parser = argparse.ArgumentParser(description="Run a device health score locally.")
     parser.add_argument("--input", type=Path, default=ROOT / "examples" / "sample.json")
@@ -64,6 +72,46 @@ def _statement(argv):
     except Exception:
         _fail("internal_error")
     print(json.dumps(result.model_dump(), ensure_ascii=False))
+
+
+def _export_bundle(argv):
+    parser = argparse.ArgumentParser(
+        prog="device_proof export-bundle",
+        description="Export the versioned evidence bundle of a succeeded proof job.",
+    )
+    parser.add_argument("--job-id", required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--runtime-dir", type=Path, default=ROOT / "runtime")
+    # argparse's default usage text would leak into stderr; keep only codes.
+    parser.error = lambda message: _fail("invalid_arguments")
+    parsed = parser.parse_args(argv)
+    try:
+        export_bundle(parsed.job_id, parsed.output, parsed.runtime_dir)
+    except BundleError as exc:
+        _fail(exc.code)
+    except Exception:
+        _fail("internal_error")
+
+
+def _verify_bundle(argv):
+    parser = argparse.ArgumentParser(
+        prog="device_proof verify-bundle",
+        description="Verify an evidence bundle standalone (no HTTP, no job store).",
+    )
+    parser.add_argument("--bundle", type=Path, required=True)
+    parser.add_argument("--backend-dir", type=Path, default=None)
+    # argparse's default usage text would leak into stderr; keep only codes.
+    parser.error = lambda message: _fail("invalid_arguments")
+    parsed = parser.parse_args(argv)
+    try:
+        result = verify_bundle(parsed.bundle, backend_dir=parsed.backend_dir)
+    except BundleError as exc:
+        _fail(exc.code)
+    except ProofBackendError as exc:
+        _fail(exc.code)
+    except Exception:
+        _fail("internal_error")
+    print(json.dumps(result, ensure_ascii=False))
 
 
 def _model_check(argv):

@@ -193,6 +193,19 @@ class JobStore:
         atomic_write("instances.json",
                      json.dumps(instances, ensure_ascii=False).encode("utf-8"))
 
+    def load_material_bytes(self, job_id: str) -> dict | None:
+        """Raw persisted bytes of every public material, keyed by bundle
+        member name; None if any material is missing or unreadable."""
+        directory = self.materials_dir / job_id
+        names = (
+            "manifest.json", "proof.json", "verification_key.key",
+            "settings.json", "instances.json",
+        )
+        try:
+            return {name: (directory / name).read_bytes() for name in names}
+        except OSError:
+            return None
+
     def load_materials(self, job_id: str) -> dict | None:
         directory = self.materials_dir / job_id
         try:

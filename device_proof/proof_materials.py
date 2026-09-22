@@ -174,8 +174,13 @@ def statement_digest_from_manifest(manifest: dict) -> str:
     return digest_json(body)
 
 
-def validate_manifest_shape(manifest) -> dict:
-    """Type-check the manifest enough to safely read its binding fields."""
+def validate_manifest_structure(manifest) -> dict:
+    """Type-check the manifest enough to safely read its binding fields.
+
+    Checks types, formats, and format versions only; the model and
+    quantization identity pinning happens in validate_manifest_shape (or
+    in the caller's own trusted-mapping step).
+    """
     if not isinstance(manifest, dict):
         raise MaterialError
     required_str = {
@@ -214,6 +219,14 @@ def validate_manifest_shape(manifest) -> dict:
         raise MaterialError
     if manifest["ezkl_version"] != EZKL_VERSION:
         raise MaterialError
+    if not _is_hex64(manifest["model_sha256"]):
+        raise MaterialError
+    return manifest
+
+
+def validate_manifest_shape(manifest) -> dict:
+    """Type-check the manifest and pin the model/quantization identity."""
+    validate_manifest_structure(manifest)
     # The semantic interpretation of the public output is pinned to the one
     # quantization scheme the circuit was built for; a claimant cannot relabel
     # a genuine proof as belonging to a different scheme (even though it could
@@ -223,8 +236,6 @@ def validate_manifest_shape(manifest) -> dict:
     if manifest["quantization_id"] != QUANTIZATION_ID:
         raise MaterialError
     if manifest["scale"] != SCALE or manifest["rounding"] != ROUNDING:
-        raise MaterialError
-    if not _is_hex64(manifest["model_sha256"]):
         raise MaterialError
     return manifest
 
