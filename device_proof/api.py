@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse
 
 from .audit import AuditError, audit_model
 from .scoring import MODEL_ID, ROOT, ScoreRequest, ScoreResponse, model_info, score, session
+from .statement import StatementResponse, statement
 
 
 app = FastAPI(title="Device health scores", version="0.1.0")
@@ -58,6 +59,16 @@ def model_integrity(model_id: str):
 def create_score(request: ScoreRequest):
     try:
         return score(request)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Unknown model") from None
+    except AuditError:
+        raise _unavailable() from None
+
+
+@app.post("/statements", response_model=StatementResponse)
+def create_statement(request: ScoreRequest):
+    try:
+        return statement(request)
     except KeyError:
         raise HTTPException(status_code=404, detail="Unknown model") from None
     except AuditError:
